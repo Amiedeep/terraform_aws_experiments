@@ -1,3 +1,12 @@
+
+data "http" "workstation-external-ip" {
+  url   = "http://ipv4.icanhazip.com"
+}
+
+locals {
+  workstation-external-cidr = "${chomp(data.http.workstation-external-ip.body)}/32"
+}
+
 resource "aws_security_group" "security_group" {
   name   = "${var.instance_name} group"
   vpc_id = var.vpc_id
@@ -9,14 +18,14 @@ resource "aws_security_group" "security_group" {
     from_port   = 22
     protocol    = "tcp"
     to_port     = 22
-    cidr_blocks = [var.cidr_to_whitelist]
+    cidr_blocks = [local.workstation-external-cidr]
   }
 
   ingress {
     from_port   = 8080
     protocol    = "tcp"
     to_port     = 8080
-    cidr_blocks = [var.cidr_to_whitelist]
+    cidr_blocks = [local.workstation-external-cidr]
   }
 
   egress {

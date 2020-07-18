@@ -10,7 +10,6 @@
 
 ## Deployment steps:
 
-* Whitelist your public ip address in variables.tf file.
 * Generate a ssh key pair with name ci_key.
 * run ```terraform apply``` from terminal.
  

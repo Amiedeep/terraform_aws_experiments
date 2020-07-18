@@ -20,7 +20,7 @@
 //}
 
 resource "aws_instance" "instance" {
-  ami                         = "ami-0fad7378adf284ce0"
+  ami                         = "ami-0fad7378adf284ce0" //rhel 7
   instance_type               = "t2.micro"
   subnet_id                   = var.public_subnet_id
   key_name                    = aws_key_pair.instance_key.key_name
