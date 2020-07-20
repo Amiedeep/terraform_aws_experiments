@@ -1,5 +1,8 @@
 resource "aws_subnet" "private_subnet" {
-  cidr_block = var.private_subnet_cidr
+  count =  length(data.aws_availability_zones.available.names)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  cidr_block = cidrsubnet(var.primary_cidr, 8, length(data.aws_availability_zones.available.names)+count.index)
   vpc_id     = aws_vpc.main_vpc.id
 
   tags = {
@@ -15,7 +18,7 @@ resource "aws_eip" "nat" {
 
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_subnet.id
+  subnet_id     = aws_subnet.public_subnet.0.id
   tags = {
     Name = "Nat gateway"
   }
@@ -29,8 +32,9 @@ resource "aws_route_table" "private_subnet_route_table" {
 }
 
 resource "aws_route_table_association" "private_subnet_route_table_association" {
+  count =  length(data.aws_availability_zones.available.names)
+  subnet_id      = aws_subnet.private_subnet.*.id[count.index]
   route_table_id = aws_route_table.private_subnet_route_table.id
-  subnet_id      = aws_subnet.private_subnet.id
 }
 
 resource "aws_route" "nat_route" {
