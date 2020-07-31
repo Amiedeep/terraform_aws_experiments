@@ -46,6 +46,6 @@ resource "aws_instance" "instance" {
 
 resource "aws_key_pair" "instance_key" {
   key_name   = "${var.instance_name}_key"
-  public_key = file("${path.root}/${var.instance_name}_key.pub")
+  public_key = file("${var.key_path}")
 }
 
