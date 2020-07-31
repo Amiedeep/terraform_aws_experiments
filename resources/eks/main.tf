@@ -1,8 +1,3 @@
-# resource "random_id" "cluster_name" {
-#   count       = var.enable_amazon ? 1 : 0
-#   byte_length = 6
-# }
-
 ## Get your workstation external IPv4 address:
 data "http" "workstation-external-ip" {
   url   = "http://ipv4.icanhazip.com"
@@ -28,61 +23,6 @@ data "aws_ami" "eks-worker" {
   owners      = ["602401143452"] # Amazon EKS AMI Account ID
 }
 
-
-# # VPC
-# resource "aws_vpc" "main" {
-#   cidr_block = var.aws_cidr_block
-
-#   tags = map(
-#     "Project", "eks",
-#     "ManagedBy", "terraform",
-#     "kubernetes.io/cluster/${var.aws_cluster_name}-${random_id.cluster_name[count.index].hex}", "shared",
-#   )
-# }
-
-# resource "aws_subnet" "public" {
-
-#   availability_zone = data.aws_availability_zones.available.0.names[count.index]
-#   cidr_block        = cidrsubnet(var.aws_cidr_block, 8, count.index)
-#   vpc_id            = var.vpc_id
-
-#   tags = map(
-#     "Project", "k8s",
-#     "ManagedBy", "terraform",
-#     "kubernetes.io/cluster/${var.aws_cluster_name}-${random_id.cluster_name.0.hex}", "shared"
-#   )
-# }
-
-# resource "aws_internet_gateway" "igw" {
-
-#   vpc_id = var.vpc_id
-
-#   tags = {
-#     Project   = "k8s",
-#     ManagedBy = "terraform"
-#   }
-# }
-
-# resource "aws_route_table" "rt" {
-
-#   vpc_id = var.vpc_id
-
-#   route {
-#     cidr_block = "0.0.0.0/0"
-#     gateway_id = aws_internet_gateway.igw.0.id
-#   }
-
-#   tags = {
-#     Project   = "k8s",
-#     ManagedBy = "terraform"
-#   }
-# }
-
-# resource "aws_route_table_association" "rtassoc" {
-
-#   subnet_id      = aws_subnet.public.*.id[count.index]
-#   route_table_id = aws_route_table.rt.0.id
-# }
 
 
 # Master IAM
@@ -201,17 +141,17 @@ POLICY
   }
 }
 
-resource "aws_iam_role_policy_attachment" "node-AmazonEKSWorkerNodePolicy" {
+resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.node.name
 }
 
-resource "aws_iam_role_policy_attachment" "node-AmazonEKS_CNI_Policy" {
+resource "aws_iam_role_policy_attachment" "AmazonEKS_CNI_Policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
   role       = aws_iam_role.node.name
 }
 
-resource "aws_iam_role_policy_attachment" "node-AmazonEC2ContainerRegistryReadOnly" {
+resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.node.name
 }
@@ -222,207 +162,29 @@ resource "aws_iam_instance_profile" "node" {
 }
 
 
-# EKS Worker Security Groups
-resource "aws_security_group" "node" {
-  name        = "${var.aws_cluster_name}-node"
-  description = "Security group for all nodes in the cluster"
-  vpc_id      = var.vpc_id
+resource "aws_eks_node_group" "node" {
+  cluster_name    = aws_eks_cluster.cluster.name
+  node_group_name = "demo-nodegroup"
+  node_role_arn   = aws_iam_role.node.arn
+  subnet_ids      = var.public_subnets
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  scaling_config {
+    desired_size = var.eks_nodes
+    max_size     = var.eks_max_nodes
+    min_size     = var.eks_min_nodes
   }
+  # ec2_ssh_key = "/Users/amandeep/git_projects/Ansible-terraform/ci_key.pub"
+
+  instance_types = [var.aws_instance_type]
+  # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
+  # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
+  depends_on = [
+    aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.AmazonEC2ContainerRegistryReadOnly,
+  ]
 
   tags = map(
-    "Project", "k8s",
-    "ManagedBy", "terraform",
-    "kubernetes.io/cluster/${var.aws_cluster_name}", "owned",
+        "kubernetes.io/cluster/${var.aws_cluster_name}", "shared"
   )
 }
-
-resource "aws_security_group_rule" "demo-node-ingress-self" {
-  description              = "Allow node to communicate with each other"
-  from_port                = 0
-  protocol                 = "-1"
-  security_group_id        = aws_security_group.node.id
-  source_security_group_id = aws_security_group.node.id
-  to_port                  = 65535
-  type                     = "ingress"
-}
-
-resource "aws_security_group_rule" "demo-node-ingress-cluster" {
-  description              = "Allow worker Kubelets and pods to receive communication from the cluster control plane"
-  from_port                = 1025
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.node.id
-  source_security_group_id = aws_security_group.cluster.id
-  to_port                  = 65535
-  type                     = "ingress"
-}
-
-
-# EKS Master <--> Worker Security Group
-resource "aws_security_group_rule" "cluster-ingress-node-https" {
-  description              = "Allow pods to communicate with the cluster API Server"
-  from_port                = 443
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.cluster.id
-  source_security_group_id = aws_security_group.node.id
-  to_port                  = 443
-  type                     = "ingress"
-}
-
-
-# EKS Worker Nodes AutoScalingGroup
-
-# EKS currently documents this required userdata for EKS worker nodes to
-# properly configure Kubernetes applications on the EC2 instance.
-# We implement a Terraform local here to simplify Base64 encoding this
-# information into the AutoScaling Launch Configuration.
-# More information: https://docs.aws.amazon.com/eks/latest/userguide/launch-workers.html
-
-locals {
-  demo-node-userdata = <<USERDATA
-#!/bin/bash
-set -o xtrace
-/etc/eks/bootstrap.sh --apiserver-endpoint '${aws_eks_cluster.cluster.endpoint}' --b64-cluster-ca '${aws_eks_cluster.cluster.certificate_authority.0.data}' '${var.aws_cluster_name}'
-USERDATA
-}
-
-resource "aws_launch_configuration" "lc" {
-  associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.node.name
-  image_id                    = data.aws_ami.eks-worker.id
-  instance_type               = var.aws_instance_type
-  name_prefix                 = var.aws_cluster_name
-  security_groups             = [aws_security_group.node.id]
-  user_data_base64            = base64encode(local.demo-node-userdata)
-}
-
-resource "aws_autoscaling_group" "asg" {
-  desired_capacity     = var.eks_nodes
-  launch_configuration = aws_launch_configuration.lc.id
-  max_size             = var.eks_max_nodes
-  min_size             = var.eks_min_nodes
-  name                 = var.aws_cluster_name
-  vpc_zone_identifier  = var.public_subnets
-
-  tag {
-    key                 = "Name"
-    value               = var.aws_cluster_name
-    propagate_at_launch = true
-  }
-
-  tag {
-    key                 = "Project"
-    value               = "k8s"
-    propagate_at_launch = true
-  }
-
-  tag {
-    key                 = "ManagedBy"
-    value               = "terraform"
-    propagate_at_launch = true
-  }
-  tag {
-    key                 = "kubernetes.io/cluster/${var.aws_cluster_name}"
-    value               = "owned"
-    propagate_at_launch = true
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-
-//EKS Join Worker Nodes
-//EKS kubeconf
-# locals {
-#   config_map_aws_auth = <<CONFIGMAPAWSAUTH
-# apiVersion: v1
-# kind: ConfigMap
-# metadata:
-#   name: aws-auth
-#   namespace: kube-system
-# data:
-#   mapRoles: |
-#     - rolearn: ${aws_iam_role.node.arn}
-#       username: system:node:{{EC2PrivateDNSName}}
-#       groups:
-#         - system:bootstrappers
-#         - system:nodes
-# CONFIGMAPAWSAUTH
-
-#   kubeconfig = <<KUBECONFIG
-# apiVersion: v1
-# clusters:
-# - cluster:
-#     server: ${aws_eks_cluster.cluster.endpoint}
-#     certificate-authority-data: ${aws_eks_cluster.cluster.certificate_authority.0.data}
-#   name: kubernetes
-# contexts:
-# - context:
-#     cluster: kubernetes
-#     user: aws
-#   name: aws
-# current-context: aws
-# kind: Config
-# preferences: {}
-# users:
-# - name: aws
-#   user:
-#     exec:
-#       apiVersion: client.authentication.k8s.io/v1alpha1
-#       command: aws-iam-authenticator
-#       args:
-#         - "token"
-#         - "-i"
-#         - "${var.aws_cluster_name}"
-# KUBECONFIG
-# }
-
-# resource "local_file" "kubeconfigaws" {
-#   content  = local.kubeconfig
-#   filename = "${path.module}/kubeconfig_aws"
-
-#   depends_on = [aws_eks_cluster.cluster]
-# }
-
-# resource "local_file" "eks_config_map_aws_auth" {
-#   content  = local.config_map_aws_auth
-#   filename = "${path.module}/aws_config_map_aws_auth"
-
-#   depends_on = [local_file.kubeconfigaws]
-# }
-
-# resource "null_resource" "aws_iam_authenticator" {
-#   provisioner "local-exec" {
-#     command = <<EOF
-# if [ \"$(uname)\" == \"Darwin\" ]; \
-#   then curl -o aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.13.7/2019-06-11/bin/darwin/amd64/aws-iam-authenticator; \
-# elif [ \"$(expr substr $(uname -s) 1 5)\" == \"Linux\" ]; \
-#   then curl -o aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.12.7/2019-03-27/bin/linux/amd64/aws-iam-authenticator; \
-# fi; \
-# chmod +x ./aws-iam-authenticator; \
-# mkdir -p $HOME/bin && \
-# cp ./aws-iam-authenticator $HOME/bin/aws-iam-authenticator && \
-# export PATH=$HOME/bin:$PATH
-# EOF
-#   }
-
-#   depends_on = [local_file.eks_config_map_aws_auth]
-# }
-
-# resource "null_resource" "apply_kube_configmap" {
-#   provisioner "local-exec" {
-#     command = "kubectl apply -f ${path.module}/aws_config_map_aws_auth"
-#     environment = {
-#       KUBECONFIG = "${path.module}/kubeconfig_aws"
-#     }
-#   }
-
-#   depends_on = [null_resource.aws_iam_authenticator]
-# }

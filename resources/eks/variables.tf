@@ -31,5 +31,11 @@ variable "aws_cluster_name" {
 variable "aws_instance_type" {
   description = "AWS EC2 Instance Type (e.g. `t3.medium`)"
   type        = string
-  default     = "t3.medium"
+  default     = "t3.micro"
+}
+
+variable "key_path" {
+  description = "ssh key path"
+  type        = string
+  default     = "/Users/amandeep/git_projects/Ansible-terraform/ci_key.pub"
 }
