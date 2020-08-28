@@ -11,10 +11,21 @@
 * Terraform cli.
 * AWS account.
 
+## pre-requisites
+
+* Terraform cli; Tested version is v0.12.18
+* AWS access_key and secret configured as either environments variables or defined in config file at ~/.aws/config.
+* Ec2 module requires ssh key to be generated prior running it. You should generate a ssh key pair with name ${instance_name}_key. 
+Example:
+
+```bash
+ssh-keygen -t rsa -b 4096 -C "email address"
+```
+
 ## Deployment steps
 
-* Generate a ssh key pair with name ci_key.
-* Run terraform apply inside each service
+* Run `terraform apply` inside the service you want to provision.
+You can override the terraform variable of a service by appending `-var` followed by key-value pair or using `-var-file` option. Run `terraform apply --help` to know more.
 
 ## TODO
 
