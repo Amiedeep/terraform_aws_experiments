@@ -6,21 +6,17 @@
 * EC2 machine in public subnet running Concourse CI.
 * EKS cluster.
 
-## Dependencies
-
-* Terraform cli.
-* AWS account.
-
-## pre-requisites
+## Pre-requisites
 
 * Terraform cli; Tested version is v0.12.18
 * AWS access_key and secret configured as either environments variables or defined in config file at ~/.aws/config.
-* Ec2 module requires ssh key to be generated prior running it. You should generate a ssh key pair with name ${instance_name}_key. 
-Example:
+* Ec2 module requires ssh key to be generated prior running it. You should generate a ssh key pair with name `${instance_name}_key`. 
+    
+    Example:
 
-```bash
-ssh-keygen -t rsa -b 4096 -C "email address"
-```
+    ```bash
+    ssh-keygen -t rsa -b 4096 -C "email address"
+    ```
 
 ## Deployment steps
 
